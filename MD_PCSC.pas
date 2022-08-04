@@ -58,7 +58,7 @@ type
     FPCSCDeviceContext: THandle;
 {$IFDEF WINDOWS}
     FReaderState: TSCardReaderStateA;
-{.$ELSE}
+{$ELSE}
     FLastReaderSize: Cardinal;
     FOnTerminated: TOnTerminated;
 {$ENDIF}
@@ -70,9 +70,9 @@ type
 
     property OnReaderListChanged: TOnReaderListChanged read FOnReaderListChanged write FOnReaderListChanged;
     property OnTimer: TOnTimer read FOnTimer write FOnTimer;
-{.$IFDEF UNIX}
+{$IFDEF UNIX}
     property OnTerminated: TOnTerminated read FOnTerminated write FOnTerminated;
-{.$ENDIF}
+{$ENDIF}
   end;
 
   TPCSCReader = class
@@ -261,7 +261,7 @@ begin
       FReaderState.dwCurrentState := FReaderState.dwEventState;
       if Assigned(FOnReaderListChanged) then Synchronize(FOnReaderListChanged);
     end;
-{.$ELSE}
+{$ELSE}
     PCSCResult := FPCSCRaw.SCardListReaders(FPCSCDeviceContext, nil, nil, SizeReaders);
     if PCSCResult = SCARD_E_CANCELLED then break;
     if (PCSCResult = SCARD_S_SUCCESS) or (PCSCResult = SCARD_E_NO_READERS_AVAILABLE) then begin
@@ -282,9 +282,9 @@ begin
     end;
   end;
   if FPCSCDeviceContext <> 0 then FPCSCRaw.SCardReleaseContext(FPCSCDeviceContext);
-{.$IFDEF UNIX}
+{$IFDEF UNIX}
   if Assigned(FOnTerminated) then Synchronize(FOnTerminated);
-{.$ENDIF}
+{$ENDIF}
 end;
 
 constructor TPCSCReader.Create(AReaderName: string; PCSCRaw: TPCSCRaw);
@@ -540,7 +540,8 @@ begin
         else begin
           NewCardState := csAvailable;
           SetLength(tmpATR, FReaderStateArray[0].cbAtr);
-          for i := 0 to FReaderStateArray[0].cbAtr - 1 do tmpATR[i] := FReaderStateArray[0].rgbAtr[i];
+          for i := 0 to FReaderStateArray[0].cbAtr - 1 do
+            tmpATR[i] := FReaderStateArray[0].rgbAtr[i];
         end;
       end
       else if (CS and SCARD_STATE_EMPTY) <> 0 then NewCardState := csNoCard
@@ -549,8 +550,10 @@ begin
     end;
 
     if FCardState <> NewCardState then begin
-      if (FCardState = csNoCard) and (NewCardState = csAvailable) then Exit;
-      if (FCardState = csAvailable) and (NewCardState = csShared) then Exit;
+      //Sygrius
+      //if (FCardState = csNoCard) and (NewCardState = csAvailable) then Exit;
+      //Sygrius
+      //if (FCardState = csAvailable) and (NewCardState = csShared) then Exit;
 
       FCardState := NewCardState;
       if (NewCardState <> csShared) and (NewCardState <> csExclusive) then begin
@@ -565,7 +568,8 @@ begin
           FATR := copy(tmpATR);
           FValidCard := true;
         end;
-        if Assigned(FOnCardStateChanged) then FOnCardStateChanged(self);
+        if Assigned(FOnCardStateChanged) then
+           FOnCardStateChanged(self);
       end;
     end;
   end;

@@ -44,7 +44,7 @@ type
 function CharInSet(c: char; TheSet: TCharSet): boolean;
 {$ENDIF}
 
-function BufferToHexString(Buffer: TBytes): string;
+function BufferToHexString(Buffer: TBytes; const useSpace:Boolean=True): string;
 function HexStringToBuffer(HexString: string): TBytes;
 
 function PCSCErrorToString(ErrorCode: Cardinal): string;
@@ -62,12 +62,16 @@ begin
 end;
 {$ENDIF}
 
-function BufferToHexString(Buffer: TBytes): string;
+function BufferToHexString(Buffer: TBytes; const useSpace:Boolean=True): string;
 var
   i: integer;
 begin
   result := '';
-  for i := 0 to length(Buffer) - 1 do result := result + IntToHex(Buffer[i], 2) + ' ';
+  for i := 0 to length(Buffer) - 1 do
+  if useSpace then 
+     result := result + IntToHex(Buffer[i], 2) + ' '
+  else
+     result := result + IntToHex(Buffer[i], 2);
   result := trim(result);
 end;
 
