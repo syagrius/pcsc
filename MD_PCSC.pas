@@ -113,7 +113,8 @@ type
     procedure ClearCardInfo;
 
     function GetAtrAsString: string;
-    function SCSendAPDU(InBuffer: Pointer; InSize: Cardinal; OutBuffer: Pointer; var OutSize: Cardinal; out SW12: Word): Cardinal;
+    function SCSendAPDU(InBuffer: Pointer; InSize: Cardinal; OutBuffer: TBytes; var
+        OutSize: Cardinal; out SW12: Word): Cardinal;
     function SCIOCTL(IOCtlCode: Cardinal; InBuffer: Pointer; InSize: Cardinal; OutBuffer: Pointer; var OutSize: Cardinal): Cardinal;
   public
     constructor Create(AReaderName: string; PCSCRaw: TPCSCRaw);
@@ -440,7 +441,7 @@ begin
   SetLength(InBuffer, 0);
 end;
 
-function TPCSCReader.SCSendAPDU(InBuffer: Pointer; InSize: Cardinal; OutBuffer: Pointer; var OutSize: Cardinal; out SW12: Word): Cardinal;
+function TPCSCReader.SCSendAPDU(InBuffer: Pointer; InSize: Cardinal; OutBuffer: TBytes; var OutSize: Cardinal; out SW12: Word): Cardinal;
 var
   pioSendPCI, pioRecvPCI: pSCardIORequest;
 begin
@@ -1001,4 +1002,4 @@ begin
   if Assigned(FOnReaderRemoved) then FOnReaderRemoved(self, ReaderName);
 end;
 
-end.
+end.

@@ -113,7 +113,9 @@ type
     function SCardLocateCards(hContext: THandle; pCards: PChar; pReaderStates: PSCardReaderStateA; ReaderStatesCount: Cardinal): Cardinal;
     function SCardReconnect(hCard: THandle; ShareMode, PreferredProtocols, dwInitialization: Cardinal; out ActiveProtocol: Cardinal): Cardinal;
     function SCardReleaseContext(hContext: THandle): Cardinal;
-    function SCardTransmit(hCard: THandle; PioSendPci: PSCardIoRequest; SendBuffer: Pointer; SizeSendBuffer: Cardinal; PioRecvPci: PSCardIoRequest; RecvBuffer: Pointer; var SizeRecvBuffer: Cardinal): Cardinal;
+    function SCardTransmit(hCard: THandle; PioSendPci: PSCardIoRequest; SendBuffer:
+        Pointer; SizeSendBuffer: Cardinal; PioRecvPci: PSCardIoRequest; RecvBuffer:
+        TBytes; var SizeRecvBuffer: Cardinal): Cardinal;
     function SCardSetAttrib(hCard: THandle; AttrId: Cardinal; pAttr: Pointer; AttrLen: Cardinal): Cardinal;
     function SCardStatus(hCard: THandle; pReaderNames: PChar; var SizeReaderNames: Cardinal; out State, Protocol: Cardinal; pAtr: Pointer; var AtrLen: Cardinal): Cardinal;
     function SCardIsValidContext(hContext: THandle): Cardinal;
@@ -278,12 +280,12 @@ begin
   else Result := SCARD_E_UNSUPPORTED_FEATURE;
 end;
 
-function TPCSCRaw.SCardTransmit(hCard: THandle; PioSendPci: PSCardIoRequest; SendBuffer: Pointer; SizeSendBuffer: Cardinal; PioRecvPci: PSCardIoRequest; RecvBuffer: Pointer;
+function TPCSCRaw.SCardTransmit(hCard: THandle; PioSendPci: PSCardIoRequest; SendBuffer: Pointer; SizeSendBuffer: Cardinal; PioRecvPci: PSCardIoRequest; RecvBuffer: TBytes;
   var SizeRecvBuffer: Cardinal): Cardinal;
 begin
   if FValid and Assigned(FSCardTransmit) then
     begin
-      Result := FSCardTransmit(hCard, PioSendPci, SendBuffer, SizeSendBuffer, PioRecvPci, RecvBuffer, SizeRecvBuffer)
+      Result := FSCardTransmit(hCard, PioSendPci, SendBuffer, SizeSendBuffer, PioRecvPci, RecvBuffer, SizeRecvBuffer);
       SetLength(RecvBuffer, SizeRecvBuffer);
     end
   else Result := SCARD_E_UNSUPPORTED_FEATURE;
