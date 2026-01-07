@@ -234,7 +234,7 @@ begin
   FOnTerminated := nil;
 {$ENDIF}
   FOnTimer := nil;
-  FreeOnTerminate := true;
+  FreeOnTerminate := false;
 
   FPCSCRaw.SCardEstablishContext(SCARD_SCOPE_SYSTEM, nil, nil, FPCSCDeviceContext);
 end;
@@ -255,38 +255,71 @@ begin
 {$ENDIF}
 
   while not Terminated do begin
-{$IFDEF WINDOWS}
-    PCSCResult := FPCSCRaw.SCardGetStatusChange(FPCSCDeviceContext, 0, @FReaderState, 1);
-    if PCSCResult = SCARD_E_CANCELLED then break;
-    if PCSCResult = SCARD_S_SUCCESS then begin
-      FReaderState.dwCurrentState := FReaderState.dwEventState;
-      if Assigned(FOnReaderListChanged) then Synchronize(FOnReaderListChanged);
-    end;
-{$ELSE}
-    PCSCResult := FPCSCRaw.SCardListReaders(FPCSCDeviceContext, nil, nil, SizeReaders);
-    if PCSCResult = SCARD_E_CANCELLED then break;
-    if (PCSCResult = SCARD_S_SUCCESS) or (PCSCResult = SCARD_E_NO_READERS_AVAILABLE) then begin
-      if FLastReaderSize<>SizeReaders then begin
-        FLastReaderSize:=SizeReaders;
-        if Assigned(FOnReaderListChanged) then Synchronize(FOnReaderListChanged);
+    try
+  {$IFDEF WINDOWS}
+      PCSCResult := FPCSCRaw.SCardGetStatusChange(FPCSCDeviceContext, 0, @FReaderState, 1);
+      if PCSCResult = SCARD_E_CANCELLED then break;
+      if (PCSCResult = SCARD_S_SUCCESS) and (not Terminated) then begin
+        FReaderState.dwCurrentState := FReaderState.dwEventState;
+        if Assigned(FOnReaderListChanged) then begin
+          try
+            Synchronize(FOnReaderListChanged);
+          except
+            break; // Si Synchronize œchoue, on sort proprement
+          end;
+        end;
       end;
-    end
-    else if (PCSCResult = ERROR_BROKEN_PIPE) or (PCSCResult = ERROR_INVALID_HANDLE) or (PCSCResult = SCARD_E_INVALID_HANDLE) or (PCSCResult = SCARD_E_SERVICE_STOPPED) then begin
-      FPCSCRaw.SCardReleaseContext(FPCSCDeviceContext);
-      PCSCResult := FPCSCRaw.SCardEstablishContext(SCARD_SCOPE_SYSTEM, nil, nil, FPCSCDeviceContext);
-      if PCSCResult <> SCARD_S_SUCCESS then FPCSCRaw.SCardEstablishContext(SCARD_SCOPE_USER, nil, nil, FPCSCDeviceContext);
-    end;
-{$ENDIF}
-    if not Terminated then begin
-      if Assigned(FOnTimer) then Synchronize(FOnTimer);
-      Sleep(100);
+  {$ELSE}
+      PCSCResult := FPCSCRaw.SCardListReaders(FPCSCDeviceContext, nil, nil, SizeReaders);
+      if PCSCResult = SCARD_E_CANCELLED then break;
+      if ((PCSCResult = SCARD_S_SUCCESS) or (PCSCResult = SCARD_E_NO_READERS_AVAILABLE)) and (not Terminated) then begin
+        if FLastReaderSize<>SizeReaders then begin
+          FLastReaderSize:=SizeReaders;
+          if Assigned(FOnReaderListChanged) then begin
+            try
+              Synchronize(FOnReaderListChanged);
+            except
+              break;
+            end;
+          end;
+        end;
+      end
+      else if (PCSCResult = ERROR_BROKEN_PIPE) or (PCSCResult = ERROR_INVALID_HANDLE) or (PCSCResult = SCARD_E_INVALID_HANDLE) or (PCSCResult = SCARD_E_SERVICE_STOPPED) then begin
+        FPCSCRaw.SCardReleaseContext(FPCSCDeviceContext);
+        PCSCResult := FPCSCRaw.SCardEstablishContext(SCARD_SCOPE_SYSTEM, nil, nil, FPCSCDeviceContext);
+        if PCSCResult <> SCARD_S_SUCCESS then FPCSCRaw.SCardEstablishContext(SCARD_SCOPE_USER, nil, nil, FPCSCDeviceContext);
+      end;
+  {$ENDIF}
+      if not Terminated then begin
+        if Assigned(FOnTimer) then begin
+          try
+            Synchronize(FOnTimer);
+          except
+            break;
+          end;
+        end;
+        Sleep(50);
+      end;
+    except
+      on E: Exception do begin
+        // Log l'exception si nœcessaire (ne pas remonter silencieusement)
+        break; // exit thread on exception
+      end;
     end;
   end;
+
   if FPCSCDeviceContext <> 0 then FPCSCRaw.SCardReleaseContext(FPCSCDeviceContext);
 {$IFDEF UNIX}
-  if Assigned(FOnTerminated) then Synchronize(FOnTerminated);
+  if Assigned(FOnTerminated) and (not Terminated) then begin
+    try
+      Synchronize(FOnTerminated);
+    except
+      // Ignore l'exception lors de la terminaison
+    end;
+  end;
 {$ENDIF}
 end;
+
 
 constructor TPCSCReader.Create(AReaderName: string; PCSCRaw: TPCSCRaw);
 begin
@@ -778,22 +811,46 @@ begin
   FOnCardErrorAsync := FPCSCEventList.CardErrorAsync;
 end;
 
+
 destructor TPCSC.Destroy;
 var
   i: integer;
 begin
-  FReaderListThread.Terminate;
-  // Be sure that thread has been terminated before freeing it
+  if Assigned(FReaderListThread) then begin
+    // Signal thread termination
+    FReaderListThread.Terminate;
+
+    // Cancel any blocking PC/SC operations
+    if FPCSCDeviceContext <> 0 then begin
+      FPCSCRaw.SCardCancel(FPCSCDeviceContext);
+    end;
+
+    // Wait for thread completion
 {$IFDEF WINDOWS}
-  WaitForSingleObject(FReaderListThread.Handle, 1000);
+    WaitForSingleObject(FReaderListThread.Handle, 2000);
 {$ELSE}
-  // WaitForSingleObject is not implemented in Linux
-  while FReaderListThreadRunning do Application.ProcessMessages;
+    while FReaderListThreadRunning do begin
+      CheckSynchronize(10);
+      Sleep(10);
+    end;
 {$ENDIF}
-  for i := 0 to FReaderList.Count - 1 do TPCSCReader(FReaderList.Objects[i]).Free;
+
+    // Process pending Synchronize() calls to prevent exceptions during finalization
+    CheckSynchronize(100);
+    Sleep(100);
+    CheckSynchronize(100);
+
+    // Safe to free the thread now
+    FreeAndNil(FReaderListThread);
+  end;
+
+  // Clean up readers
+  for i := 0 to FReaderList.Count - 1 do
+    TPCSCReader(FReaderList.Objects[i]).Free;
   FReaderList.Free;
   FPCSCEventList.Free;
 
+  // Release PC/SC context
   if FPCSCDeviceContext <> 0 then begin
     FPCSCRaw.SCardCancel(FPCSCDeviceContext);
     FPCSCRaw.SCardReleaseContext(FPCSCDeviceContext);
@@ -805,7 +862,6 @@ begin
 
   inherited;
 end;
-
 function TPCSC.InitPCSC: Cardinal;
 begin
   result := SCARD_F_INTERNAL_ERROR;
